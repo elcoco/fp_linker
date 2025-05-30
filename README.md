@@ -29,7 +29,7 @@ To keep watching the directories for changes, provide the --watch flag
     fp_linker --src-dir /var/lib/flatpak/exports/bin --src-dir ~/.local/share/flatpak/exports/bin --link-dir ~/path/to/links --watch --remove
 
     --watch
-        watch directories for change
+        watch directories for changes
     --remove
         remove old links when scanning source dirs
     --src-dir
