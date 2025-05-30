@@ -164,6 +164,8 @@ class App():
                     logger.debug(f"Watch: {p}")
                     s = observer.schedule(event_handler, str(p), recursive=True)
                     scheduled[p] = s
+                    # Do initial check when directory is discovered
+                    event_handler.check()
 
                 # Unschedule directories that do not exist anymore
                 for d,s in scheduled.copy().items():
