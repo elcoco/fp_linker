@@ -26,7 +26,16 @@ If the --to-lower flag is used, all link names will be converted to lower case o
 Specify one or more source directories and one link directory where the links will be placed.  
 To keep watching the directories for changes, provide the --watch flag
     
-    fp_linker --src-dir /var/lib/flatpak/exports/bin --src-dir ~/.local/share/flatpak/exports/bin --link-dir ~/path/to/links --watch
+    fp_linker --src-dir /var/lib/flatpak/exports/bin --src-dir ~/.local/share/flatpak/exports/bin --link-dir ~/path/to/links --watch --remove
+
+    --watch
+        watch directories for change
+    --remove
+        remove old links when scanning source dirs
+    --src-dir
+        source directory where flatpak binaries can be found
+    --link-dir
+        directory where links are placed
 
 You can add the link directory to your $PATH so flatpaks are easy to launch from the terminal.  
 
