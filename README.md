@@ -29,3 +29,24 @@ To keep watching the directories for changes, provide the --watch flag
     fp_linker --src-dir /var/lib/flatpak/exports/bin --src-dir ~/.local/share/flatpak/exports/bin --link-dir ~/path/to/links --watch
 
 You can add the link directory to your $PATH so flatpaks are easy to launch from the terminal.  
+
+### help
+
+     > fp_linker/fp_linker --help                                                                                                       19:10:19
+    usage: fp_linker [-h] [-w] -l LINK_DIR -s SRC_DIR [-p PREFIX] [-P POSTFIX] [-L] [-r] [-D]
+
+    Create links for flatpak apps
+
+    options:
+      -h, --help            show this help message and exit
+      -w, --watch           keep watching for new packages
+      -l, --link-dir LINK_DIR
+                            directory where link is placed
+      -s, --src-dir SRC_DIR
+                            directory containing flatpak binaries
+      -p, --prefix PREFIX   prefix link names with string
+      -P, --postfix POSTFIX
+                            postfix link names with string
+      -L, --to-lower        make link names lowercase only
+      -r, --remove          remove old links
+      -D, --debug           enable debugging

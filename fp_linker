@@ -46,19 +46,21 @@ class CustomFormatter(logging.Formatter):
 
 
 class EventHandler(FileSystemEventHandler):
-    def __init__(self, src_dirs: list[Path], link_dir: Path, prefix: str, postfix: str, to_lower: bool) -> None:
+    def __init__(self, src_dirs: list[Path], link_dir: Path, prefix: str, postfix: str, to_lower: bool, remove: bool) -> None:
         super().__init__()
         self._src_dirs = src_dirs
         self._prefix = prefix
         self._postfix = postfix
         self._link_dir = link_dir
         self._to_lower = to_lower
+        self._remove = remove
 
     def check(self):
         """ Link all files in target directory into link_dir """
         # Remove all old links
-        for f in self._link_dir.iterdir():
-            f.unlink()
+        if self._remove:
+            for f in self._link_dir.iterdir():
+                f.unlink()
 
         for src_dir in self._src_dirs:
             logger.info(f"Scanning source dir: {src_dir}")
@@ -95,6 +97,7 @@ class App():
         parser.add_argument('-p', '--prefix',   help="prefix link names with string", type=str, default="")
         parser.add_argument('-P', '--postfix',  help="postfix link names with string", type=str, default="")
         parser.add_argument('-L', '--to-lower', help="make link names lowercase only", action='store_true')
+        parser.add_argument('-r', '--remove',   help="remove old links", action='store_true')
 
         parser.add_argument('-D', '--debug',    help="enable debugging", action='store_true')
 
@@ -114,6 +117,7 @@ class App():
         self._prefix = args.prefix
         self._postfix = args.postfix
         self._to_lower = args.to_lower
+        self._remove = args.remove
 
         if not self._link_dir.is_dir():
             die(f"Directory doesn\'t exist, {self._link_dir}")
@@ -159,16 +163,24 @@ class App():
         unscheduled = self._src_dirs[:]
         scheduled = {}
 
+        def check():
+            changed = False
+            for p in unscheduled.copy():
+                if not p.is_dir():
+                    #logger.error(f"Path is not a directory, {p}")
+                    continue
+                unscheduled.remove(p)
+                logger.debug(f"Watch: {p}")
+                s = observer.schedule(event_handler, str(p), recursive=True)
+                scheduled[p] = s
+                changed = True
+            return changed
+
+        check()
+
         try:
             while True:
-                for p in unscheduled.copy():
-                    if not p.is_dir():
-                        #logger.error(f"Path is not a directory, {p}")
-                        continue
-                    unscheduled.remove(p)
-                    logger.debug(f"Watch: {p}")
-                    s = observer.schedule(event_handler, str(p), recursive=True)
-                    scheduled[p] = s
+                if check():
                     # Do initial check when directory is discovered
                     event_handler.check()
 
@@ -185,11 +197,10 @@ class App():
 
         observer.join()
 
-
     def run(self):
         self.parse_args()
 
-        event_handler = EventHandler(self._src_dirs, self._link_dir, self._prefix, self._postfix, self._to_lower)
+        event_handler = EventHandler(self._src_dirs, self._link_dir, self._prefix, self._postfix, self._to_lower, self._remove)
 
         if self._do_watch:
             event_handler.check()
