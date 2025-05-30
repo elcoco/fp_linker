@@ -49,14 +49,17 @@ class CustomFormatter(logging.Formatter):
 
 
 class EventHandler(FileSystemEventHandler):
-    def __init__(self, src_dirs: list[Path], link_dir: Path, prefix: str, postfix: str, to_lower: bool, remove: bool) -> None:
+    def __init__(self, src_dirs: list[Path], link_dir: Path, prefix: str, postfix: str, to_lower: bool, t_notify_ms) -> None:
         super().__init__()
         self._src_dirs = src_dirs
         self._prefix = prefix
         self._postfix = postfix
         self._link_dir = link_dir
         self._to_lower = to_lower
-        self._remove = remove
+        self._t_notify_ms = t_notify_ms
+
+        # Keep track of installed apps
+        self._known_apps = []
 
     def run_cmd(self, cmd: list[str], timeout: int=-1, user: Optional[str]=None, envs: Optional[dict[str,str]]=None, cwd: Optional[Path]=None, raise_on_err=True, shell: bool=False):
         # this fixes all sort of localisation issues like ',' for '.' in numbers
@@ -93,28 +96,38 @@ class EventHandler(FileSystemEventHandler):
 
         return result
 
+    def scan_dirs(self) -> list[Path]:
+        return [f for d in self._src_dirs for f in d.iterdir() if d.is_dir()]
+
+    def notify(self, summary: str, body: str):
+        if self._t_notify_ms >= 0:
+            self.run_cmd(["notify-send", "--app-name=fp_linker", f"--expire-time={self._t_notify_ms}",
+                         f"--urgency=normal", f"fp_linker: {summary}", body])
+
     def check(self):
-        """ Link all files in target directory into link_dir """
-        # Remove all old links
-        if self._remove:
-            for f in self._link_dir.iterdir():
-                f.unlink(missing_ok=True)
-
-        for src_dir in self._src_dirs:
-            logger.info(f"Scanning source dir: {src_dir}")
-
-            if not src_dir.is_dir():
-                logger.error(f"Source dir is not a directory, {src_dir}")
-                continue
-
-            for f in src_dir.iterdir():
+        """ Check for new and removed flatpaks """
+        for f in self.scan_dirs():
+            if f not in self._known_apps:
                 name = f.name.split(".")[-1]
                 if self._to_lower:
                     name = name.lower()
+
                 link = self._link_dir / f"{self._prefix}{name}{self._postfix}"
-                link.unlink(missing_ok=True)
+                if link.is_symlink() and link.exists():
+                    continue
+
                 link.symlink_to(f)
                 logger.info(f"Linked: {link} -> {f}")
+                self.notify("New flatpak detected", f"linked: {name}")
+
+        # cleanup broken links
+        for f in self._link_dir.iterdir():
+            if f.is_symlink() and not f.exists():
+                f.unlink()
+                logger.info(f"{f.name} is no longer installed, cleaning up symlink")
+                self.notify("Flatpak removed", f"unlinked: {f.name}")
+
+        self._known_apps = self.scan_dirs()
 
     def on_any_event(self, event):
         #logger.info(f"[{event.event_type}]\t{event.src_path}")
@@ -135,7 +148,7 @@ class App():
         parser.add_argument('-p', '--prefix',   help="prefix link names with string", type=str, default="")
         parser.add_argument('-P', '--postfix',  help="postfix link names with string", type=str, default="")
         parser.add_argument('-L', '--to-lower', help="make link names lowercase only", action='store_true')
-        parser.add_argument('-r', '--remove',   help="remove old links", action='store_true')
+        parser.add_argument('-t', '--notify_ms',  help="duration of notification in sec (-1 to disable), default=10", type=int, default=10)
 
         parser.add_argument('-D', '--debug',    help="enable debugging", action='store_true')
 
@@ -155,7 +168,10 @@ class App():
         self._prefix = args.prefix
         self._postfix = args.postfix
         self._to_lower = args.to_lower
-        self._remove = args.remove
+        if args.notify_ms < 0:
+            self._t_notify_ms = -1
+        else:
+            self._t_notify_ms = args.notify_ms * 1000
 
         if not self._link_dir.is_dir():
             die(f"Directory doesn\'t exist, {self._link_dir}")
@@ -203,7 +219,7 @@ class App():
     def run(self):
         self.parse_args()
 
-        event_handler = EventHandler(self._src_dirs, self._link_dir, self._prefix, self._postfix, self._to_lower, self._remove)
+        event_handler = EventHandler(self._src_dirs, self._link_dir, self._prefix, self._postfix, self._to_lower, self._t_notify_ms)
 
         if self._do_watch:
             event_handler.check()
