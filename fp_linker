@@ -98,7 +98,7 @@ class EventHandler(FileSystemEventHandler):
         # Remove all old links
         if self._remove:
             for f in self._link_dir.iterdir():
-                f.unlink()
+                f.unlink(missing_ok=True)
 
         for src_dir in self._src_dirs:
             logger.info(f"Scanning source dir: {src_dir}")
