@@ -1,7 +1,7 @@
 ## flatpak auto linker
 
 Flatpak names are difficult to remember and running "flatpak run blablabla" is hard.  
-This script automatically creates links for flatpak applications.  
+This script automatically creates symlinks for flatpak applications.  
 
 Features:  
 - Create sane symlinks to hard to remember flatpak binary names  
