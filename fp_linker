@@ -1,0 +1,203 @@
+#!/usr/bin/env python3
+
+import argparse
+import logging
+from typing import Optional
+import os, sys
+from pathlib import Path
+import time
+import subprocess
+
+from watchdog.observers import Observer
+from watchdog.events import LoggingEventHandler, FileSystemEventHandler
+
+
+PATHS = [ Path("/var/lib/flatpak/exports/bin"),
+          Path.home() / ".local/share/flatpak/exports/bin",
+         ]
+         # Path.home() / "tmp/misc" ]
+
+
+def die(msg: str) -> None:
+    logger.error(msg)
+    sys.exit(1)
+
+
+class FPLinkerException(Exception): pass
+
+
+class CustomFormatter(logging.Formatter):
+    """Logging Formatter to add colors and count warning / errors"""
+
+    format = "%(message)s"
+
+    FORMATS = {
+        logging.DEBUG: f"{format}",
+        logging.INFO: f"{format}",
+        logging.WARNING: f"{format}",
+        logging.ERROR: f"{format}",
+        logging.CRITICAL: f"{format}",
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt)
+        return formatter.format(record)
+
+
+class EventHandler(FileSystemEventHandler):
+    def __init__(self, src_dirs: list[Path], link_dir: Path, prefix: str, postfix: str) -> None:
+        super().__init__()
+        self._src_dirs = src_dirs
+        self._prefix = prefix
+        self._postfix = postfix
+        self._link_dir = link_dir
+
+    def check(self):
+        """ Link all files in target directory into link_dir """
+        # Remove all old links
+        for f in self._link_dir.iterdir():
+            f.unlink()
+
+        for src_dir in self._src_dirs:
+            logger.info(f"Scanning source dir: {src_dir}")
+
+            if not src_dir.is_dir():
+                logger.error(f"Source dir is not a directory, {src_dir}")
+                continue
+
+            for f in src_dir.iterdir():
+                name = f.name.split(".")[-1]
+                link = self._link_dir / f"{self._prefix}{name}{self._postfix}"
+                link.unlink(missing_ok=True)
+                link.symlink_to(f)
+                logger.info(f"Linked: {link} -> {f}")
+
+    def on_any_event(self, event):
+        #logger.info(f"[{event.event_type}]\t{event.src_path}")
+        if event.event_type in ["created", "deleted"]:
+            self.check()
+
+
+class App():
+    def __init__(self) -> None:
+        pass
+
+    def parse_args(self):
+        parser = argparse.ArgumentParser(description='Create links for flatpak apps')
+
+        parser.add_argument('-w', '--watch',    help="keep watching for new packages", action='store_true')
+        parser.add_argument('-l', '--link-dir', help="directory where link is placed", required=True, type=Path)
+        parser.add_argument('-s', '--src-dir',  help="directory containing flatpak binaries", required=True, action="append", type=Path)
+        parser.add_argument('-p', '--prefix',   help="prefix link names with string", type=str, default="")
+        parser.add_argument('-P', '--postfix',  help="postfix link names with string", type=str, default="")
+
+        parser.add_argument('-D', '--debug',    help="enable debugging", action='store_true')
+
+        args = parser.parse_args()
+
+
+        if args.debug:
+            logger.setLevel(logging.DEBUG)
+        else:
+            logger.setLevel(logging.INFO)
+
+        args = parser.parse_args()
+
+        self._do_watch = args.watch
+        self._src_dirs = [ p.expanduser() for p in args.src_dir ] 
+        self._link_dir = args.link_dir
+        self._prefix = args.prefix
+        self._postfix = args.postfix
+
+        if not self._link_dir.is_dir():
+            die(f"Directory doesn\'t exist, {self._link_dir}")
+
+    def run_cmd(self, cmd: list[str], timeout: int=-1, user: Optional[str]=None, envs: Optional[dict[str,str]]=None, cwd: Optional[Path]=None, raise_on_err=True, shell: bool=False):
+        # this fixes all sort of localisation issues like ',' for '.' in numbers
+        env = os.environ.copy()
+        env["LC_ALL"] = "C"
+
+        if envs:
+            for k,v in envs.items():
+                env[k] = v
+
+        if user:
+            cmd = ["sudo", "-u", user] + cmd
+
+        # raises FileNotFoundError if command is not found
+        try:
+            if timeout > 0:
+                result = subprocess.run(cmd, capture_output=True, encoding="utf8", env=env, cwd=cwd, timeout=timeout, shell=shell)
+            else:
+                result = subprocess.run(cmd, capture_output=True, encoding="utf8", env=env, cwd=cwd, shell=shell)
+
+        except subprocess.TimeoutExpired as e:
+            raise FPLinkerException(e)
+        except FileNotFoundError as e:
+            raise FPLinkerException(e)
+
+        # raises subprocess.CalledProcessError if exitcode is not 0
+        try:
+            result.check_returncode()
+        except subprocess.CalledProcessError as e:
+            print(result.stdout)
+            print(result.stderr)
+            if raise_on_err:
+                raise FPLinkerException(e)
+
+        return result
+
+    def do_watch(self, event_handler: EventHandler):
+        observer = Observer()
+        observer.start()
+        unscheduled = self._src_dirs[:]
+        scheduled = {}
+
+        try:
+            while True:
+                for p in unscheduled.copy():
+                    if not p.is_dir():
+                        #logger.error(f"Path is not a directory, {p}")
+                        continue
+                    unscheduled.remove(p)
+                    logger.debug(f"Watch: {p}")
+                    s = observer.schedule(event_handler, str(p), recursive=True)
+                    scheduled[p] = s
+
+                # Unschedule directories that do not exist anymore
+                for d,s in scheduled.copy().items():
+                    if not d.is_dir():
+                        observer.unschedule(s)
+                        unscheduled.append(d)
+                        del scheduled[d]
+                        logger.error(f"Directory is removed, {d}")
+                time.sleep(5)
+        except KeyboardInterrupt:
+            observer.stop()
+
+        observer.join()
+
+
+    def run(self):
+        self.parse_args()
+
+        event_handler = EventHandler(self._src_dirs, self._link_dir, self._prefix, self._postfix)
+
+        if self._do_watch:
+            event_handler.check()
+            self.do_watch(event_handler)
+        else:
+            event_handler.check()
+
+
+
+logger = logging.getLogger("fp_linker")
+ch = logging.StreamHandler()
+ch.setFormatter(CustomFormatter())
+logger.addHandler(ch)
+
+
+if __name__ == "__main__":
+    app = App()
+    app.run()
