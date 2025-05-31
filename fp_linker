@@ -164,8 +164,6 @@ class App():
         else:
             logger.setLevel(logging.INFO)
 
-        args = parser.parse_args()
-
         self._do_watch = args.watch
         self._link_dir = args.link_dir
         self._prefix = args.prefix
