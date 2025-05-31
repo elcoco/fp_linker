@@ -14,10 +14,8 @@ from watchdog.observers import Observer
 from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 
 
-PATHS = [ Path("/var/lib/flatpak/exports/bin"),
-          Path.home() / ".local/share/flatpak/exports/bin",
-         ]
-         # Path.home() / "tmp/misc" ]
+FP_PATHS = [ Path("/var/lib/flatpak/exports/bin"),
+             Path.home() / ".local/share/flatpak/exports/bin" ]
 
 
 def die(msg: str) -> None:
@@ -117,15 +115,16 @@ class EventHandler(FileSystemEventHandler):
                     continue
 
                 link.symlink_to(f)
-                logger.info(f"Linked: {link} -> {f}")
-                self.notify("New flatpak detected", f"linked: {name}")
+                logger.info(f"Flatpak installed, linked: {link} -> {f}")
+                self.notify("New flatpak installed", f"Linked: {name} -> {link.readlink().name}")
 
         # cleanup broken links
         for f in self._link_dir.iterdir():
             if f.is_symlink() and not f.exists():
+                target = f.readlink()
                 f.unlink()
-                logger.info(f"{f.name} is no longer installed, cleaning up symlink")
-                self.notify("Flatpak removed", f"unlinked: {f.name}")
+                logger.info(f"Flatpak '{f.name}' is no longer installed, cleaning up symlink")
+                self.notify("Flatpak uninstalled", f"Unlinked: {f.name} -> {target.name}")
 
         self._known_apps = self.scan_dirs()
 
@@ -144,7 +143,7 @@ class App():
 
         parser.add_argument('-w', '--watch',    help="keep watching for new packages", action='store_true')
         parser.add_argument('-l', '--link-dir', help="directory where link is placed", required=True, type=Path)
-        parser.add_argument('-s', '--src-dir',  help="directory containing flatpak binaries", required=True, action="append", type=Path)
+        parser.add_argument('-s', '--src-dir',  help="directory containing flatpak binaries", action="append", type=Path, default=FP_PATHS)
         parser.add_argument('-p', '--prefix',   help="prefix link names with string", type=str, default="")
         parser.add_argument('-P', '--postfix',  help="postfix link names with string", type=str, default="")
         parser.add_argument('-L', '--to-lower', help="make link names lowercase only", action='store_true')
@@ -163,7 +162,6 @@ class App():
         args = parser.parse_args()
 
         self._do_watch = args.watch
-        self._src_dirs = [ p.expanduser() for p in args.src_dir ] 
         self._link_dir = args.link_dir
         self._prefix = args.prefix
         self._postfix = args.postfix
@@ -172,6 +170,8 @@ class App():
             self._t_notify_ms = -1
         else:
             self._t_notify_ms = args.notify_ms * 1000
+
+        self._src_dirs = [ p.expanduser() for p in args.src_dir ]
 
         if not self._link_dir.is_dir():
             die(f"Directory doesn\'t exist, {self._link_dir}")
@@ -182,26 +182,16 @@ class App():
         unscheduled = self._src_dirs[:]
         scheduled = {}
 
-        def check():
-            changed = False
-            for p in unscheduled.copy():
-                if not p.is_dir():
-                    #logger.error(f"Path is not a directory, {p}")
-                    continue
-                unscheduled.remove(p)
-                logger.debug(f"Watch: {p}")
-                s = observer.schedule(event_handler, str(p), recursive=True)
-                scheduled[p] = s
-                changed = True
-            return changed
-
-        check()
-
+        # Keep watching directories, also if they don't exist yet
         try:
             while True:
-                if check():
-                    # Do initial check when directory is discovered
-                    event_handler.check()
+                for p in unscheduled.copy():
+                    if not p.is_dir():
+                        continue
+                    unscheduled.remove(p)
+                    logger.info(f"Watch: {p}")
+                    s = observer.schedule(event_handler, str(p), recursive=True)
+                    scheduled[p] = s
 
                 # Unschedule directories that do not exist anymore
                 for d,s in scheduled.copy().items():
@@ -213,8 +203,7 @@ class App():
                 time.sleep(5)
         except KeyboardInterrupt:
             observer.stop()
-
-        observer.join()
+            observer.join()
 
     def run(self):
         self.parse_args()
