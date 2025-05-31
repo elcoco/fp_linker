@@ -104,6 +104,7 @@ class EventHandler(FileSystemEventHandler):
 
     def check(self):
         """ Check for new and removed flatpaks """
+        changed = False
         for f in self.scan_dirs():
             if f not in self._known_apps:
                 name = f.name.split(".")[-1]
@@ -117,6 +118,7 @@ class EventHandler(FileSystemEventHandler):
                 link.symlink_to(f)
                 logger.info(f"Flatpak installed, linked: {link} -> {f}")
                 self.notify("New flatpak installed", f"Linked: {name} -> {link.readlink().name}")
+                changed = True
 
         # cleanup broken links
         for f in self._link_dir.iterdir():
@@ -125,8 +127,10 @@ class EventHandler(FileSystemEventHandler):
                 f.unlink()
                 logger.info(f"Flatpak '{f.name}' is no longer installed, cleaning up symlink")
                 self.notify("Flatpak uninstalled", f"Unlinked: {f.name} -> {target.name}")
+                changed = True
 
         self._known_apps = self.scan_dirs()
+        return changed
 
     def on_any_event(self, event):
         #logger.info(f"[{event.event_type}]\t{event.src_path}")
@@ -214,8 +218,8 @@ class App():
             event_handler.check()
             self.do_watch(event_handler)
         else:
-            event_handler.check()
-
+            if not event_handler.check():
+                logger.info("Nothing to do...")
 
 
 logger = logging.getLogger("fp_linker")
