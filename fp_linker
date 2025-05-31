@@ -14,6 +14,7 @@ from watchdog.observers import Observer
 from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 
 
+# Default source paths
 FP_PATHS = [ Path("/var/lib/flatpak/exports/bin"),
              Path.home() / ".local/share/flatpak/exports/bin" ]
 
@@ -24,7 +25,6 @@ def die(msg: str) -> None:
 
 
 class FPLinkerException(Exception): pass
-
 
 
 class CustomFormatter(logging.Formatter):
@@ -99,8 +99,11 @@ class EventHandler(FileSystemEventHandler):
 
     def notify(self, summary: str, body: str):
         if self._t_notify_ms >= 0:
-            self.run_cmd(["notify-send", "--app-name=fp_linker", f"--expire-time={self._t_notify_ms}",
-                         f"--urgency=normal", f"fp_linker: {summary}", body])
+            try:
+                self.run_cmd(["notify-send", "--app-name=fp_linker", f"--expire-time={self._t_notify_ms}",
+                             f"--urgency=normal", f"fp_linker: {summary}", body])
+            except FPLinkerException as e:
+                logger.error(e)
 
     def check(self):
         """ Check for new and removed flatpaks """
@@ -125,7 +128,7 @@ class EventHandler(FileSystemEventHandler):
             if f.is_symlink() and not f.exists():
                 target = f.readlink()
                 f.unlink()
-                logger.info(f"Flatpak '{f.name}' is no longer installed, cleaning up symlink")
+                logger.info(f"Flatpak '{f.name}' is no longer installed, removing symlink")
                 self.notify("Flatpak uninstalled", f"Unlinked: {f.name} -> {target.name}")
                 changed = True
 
@@ -152,11 +155,9 @@ class App():
         parser.add_argument('-P', '--postfix',  help="postfix link names with string", type=str, default="")
         parser.add_argument('-L', '--to-lower', help="make link names lowercase only", action='store_true')
         parser.add_argument('-t', '--notify_ms',  help="duration of notification in sec (-1 to disable), default=10", type=int, default=10)
-
         parser.add_argument('-D', '--debug',    help="enable debugging", action='store_true')
 
         args = parser.parse_args()
-
 
         if args.debug:
             logger.setLevel(logging.DEBUG)
@@ -226,7 +227,6 @@ logger = logging.getLogger("fp_linker")
 ch = logging.StreamHandler()
 ch.setFormatter(CustomFormatter())
 logger.addHandler(ch)
-
 
 if __name__ == "__main__":
     app = App()
