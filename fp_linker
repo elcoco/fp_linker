@@ -95,7 +95,11 @@ class EventHandler(FileSystemEventHandler):
         return result
 
     def scan_dirs(self) -> list[Path]:
-        return [f for d in self._src_dirs for f in d.iterdir() if d.is_dir()]
+        try:
+            return [f for d in self._src_dirs for f in d.iterdir() if d.is_dir()]
+        except FileNotFoundError as e:
+            logger.error(e)
+            return []
 
     def notify(self, summary: str, body: str):
         if self._t_notify_ms >= 0:
