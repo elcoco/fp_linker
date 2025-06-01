@@ -154,7 +154,7 @@ class App():
         parser.add_argument('-p', '--prefix',   help="prefix link names with string", type=str, default="")
         parser.add_argument('-P', '--postfix',  help="postfix link names with string", type=str, default="")
         parser.add_argument('-L', '--to-lower', help="make link names lowercase only", action='store_true')
-        parser.add_argument('-t', '--notify_ms',  help="duration of notification in sec (-1 to disable), default=10", type=int, default=10)
+        parser.add_argument('-n', '--notify_ms',  help="duration of notification in sec (-1 to disable), default=10", type=int, default=10)
         parser.add_argument('-D', '--debug',    help="enable debugging", action='store_true')
 
         args = parser.parse_args()
