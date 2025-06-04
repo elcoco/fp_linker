@@ -13,48 +13,43 @@ Features:
 
 ### Usage:
 
-fp_linker tries to find binaries in the provided paths.  
-The link name will be derived from the FQD flatpak name, eg:
+Typical usage:
+
+    fp-linker --link-dir /path/where/links/are/stored
+
+fp_linker tries to find desktop files in the provided paths.  
+If no paths are specified, the default flatpak locations are used:  
+
+    /var/lib/flatpak/exports/share/applications
+    $HOME/.local/share/flatpak/exports/share/applications
+
+The package name can usually be found in the desktop file and will fallback to the last part of the FQDN.
 
     com.prusa3d.PrusaSlicer -> PrusaSlicer
     org.freecad.FreeCAD     -> FreeCAD
 
-If the --to-lower flag is used, all link names will be converted to lower case only, eg:
-
-    com.prusa3d.PrusaSlicer -> prusaslicer
-    org.freecad.FreeCAD     -> freecad
-
-fp_linker will by default look for flatpaks in the default locations.  
-You can provide custom search locations with one or more --src-dir arguments.  
-To keep watching the directories for changes, provide the --watch flag
-    
-    fp_linker --link-dir ~/path/to/links --watch
-
-    --link-dir
-        directory where links are placed
-    --watch
-        watch directories for changes
+To keep watching the directories for changes, provide the --watch flag.  
 
 You can add the link directory to your $PATH so flatpaks are easy to launch from the terminal.  
 
 ### help
 
-     > fp_linker --help
-     usage: fp_linker [-h] [-w] -l LINK_DIR -s SRC_DIR [-p PREFIX] [-P POSTFIX] [-L] [-t NOTIFY_MS] [-D]
+    > fp_linker -h                                                                                                      18:18:38
+    usage: fp_linker [-h] [-w] -l LINK_DIR [-s SRC_DIR] [-p PREFIX] [-P POSTFIX] [-L] [-n NOTIFY_MS] [-D]
 
-     Create links for flatpak apps
+    Create links for flatpak apps
 
-     options:
-       -h, --help            show this help message and exit
-       -w, --watch           keep watching for new packages
-       -l, --link-dir LINK_DIR
-                             directory where link is placed
-       -s, --src-dir SRC_DIR
-                             directory containing flatpak binaries
-       -p, --prefix PREFIX   prefix link names with string
-       -P, --postfix POSTFIX
-                             postfix link names with string
-       -L, --to-lower        make link names lowercase only
-       -t, --notify_ms NOTIFY_MS
-                             duration of notification in sec (-1 to disable), default=10
-       -D, --debug           enable debugging
+    options:
+      -h, --help            show this help message and exit
+      -w, --watch           daemonize, keep watching for new packages
+      -l, --link-dir LINK_DIR
+                            directory where links are placed
+      -s, --src-dir SRC_DIR
+                            directory containing flatpak desktop files
+      -p, --prefix PREFIX   prefix link names with string
+      -P, --postfix POSTFIX
+                            postfix link names with string
+      -L, --to-lower        make link names lowercase only
+      -n, --notify_ms NOTIFY_MS
+                            duration of notification in sec (-1 to disable), default=10
+      -D, --debug           enable debugging
