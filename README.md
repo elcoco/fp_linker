@@ -16,7 +16,7 @@ Features:
 Typical usage:
 
     # --link-dir specifies the destination directory where fp_linker will create the links
-    fp-linker --link-dir /path/where/links/are/stored
+    fp-linker --link-dir /path/where/links/will/be/created
 
 fp_linker tries to find desktop files in the provided source paths.  
 If no paths are specified, the default flatpak locations are used:  
