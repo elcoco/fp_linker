@@ -15,7 +15,6 @@ Features:
 
 Typical usage:
 
-    # --link-dir specifies the destination directory where fp_linker will create the links
     fp-linker --link-dir /path/where/links/will/be/created
 
 fp_linker tries to find desktop files in the provided source paths.  
