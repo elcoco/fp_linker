@@ -67,7 +67,7 @@ class DesktopFile():
 
         for l in path.read_text().split("\n"):
             if l.startswith("Name="):
-                self.name = l.split("=")[1]
+                self.name = l.split("=")[1].replace(" ", "_")
                 break
 
 
