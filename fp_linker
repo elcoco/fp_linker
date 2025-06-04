@@ -18,6 +18,11 @@ from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 FP_PATHS = [ Path("/var/lib/flatpak/exports/bin"),
              Path.home() / ".local/share/flatpak/exports/bin" ]
 
+# Sometimes flatpak FQD names that are different from the actual package name. We can use .desktop files to discover the real package name.
+# eg: org.onlyoffice.desktopeditors
+FP_DESKTOP_PATHS = [ Path("/var/lib/flatpak/exports/share/applications"),
+                     Path.home() / ".local/share/flatpak/exports/share/applications" ]
+
 
 def die(msg: str) -> None:
     logger.error(msg)
@@ -44,6 +49,26 @@ class CustomFormatter(logging.Formatter):
         log_fmt = self.FORMATS.get(record.levelno)
         formatter = logging.Formatter(log_fmt)
         return formatter.format(record)
+
+
+class DesktopFile():
+    """ Parse desktop file and find package name """
+    def __init__(self, path: Path):
+        self.package_name = path.name.removesuffix(".desktop")
+        self.name = None
+        self.parse(path)
+
+    def __repr__(self):
+        return f"{self.name} -> {self.package_name}"
+
+    def parse(self, path: Path):
+        if not path.suffix == ".desktop":
+            return
+
+        for l in path.read_text().split("\n"):
+            if l.startswith("Name="):
+                self.name = l.split("=")[1]
+                break
 
 
 class EventHandler(FileSystemEventHandler):
@@ -100,7 +125,6 @@ class EventHandler(FileSystemEventHandler):
             if d.is_dir():
                 out += [f for f in d.iterdir() if f.is_file()]
         return out
-        #return [f for d in self._src_dirs for f in d.iterdir() if d.is_dir()]
 
     def notify(self, summary: str, body: str):
         if self._t_notify_ms >= 0:
@@ -110,12 +134,27 @@ class EventHandler(FileSystemEventHandler):
             except FPLinkerException as e:
                 logger.error(e)
 
+    def get_desktop_files(self):
+        """ Collect all desktop files from search paths and parse into objects """
+        files = []
+        for d in FP_DESKTOP_PATHS:
+            if d.is_dir():
+                files += [DesktopFile(df) for df in d.iterdir() if df.is_file()]
+        return files
+
+    def parse_pkg_name(self, pkg_name: str):
+        """ Try to find package name in desktop file, otherwise parse the package filename """
+        for df in self.get_desktop_files():
+            if df.package_name == pkg_name and df.name:
+                return df.name
+        return pkg_name.split(".")[-1]
+
     def check(self):
         """ Check for new and removed flatpaks """
         changed = False
         for f in self.scan_dirs():
             if f not in self._known_apps:
-                name = f.name.split(".")[-1]
+                name = self.parse_pkg_name(f.name)
                 if self._to_lower:
                     name = name.lower()
 
