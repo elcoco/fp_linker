@@ -18,6 +18,8 @@ from watchdog.events import LoggingEventHandler, FileSystemEventHandler
 FP_DESKTOP_PATHS = [ Path("/var/lib/flatpak/exports/share/applications"),
                      Path.home() / ".local/share/flatpak/exports/share/applications" ]
 
+FP_BIN_PATHS = [ Path("/var/lib/flatpak/exports/bin"),
+                 Path.home() / ".local/share/flatpak/exports/bin" ]
 
 def die(msg: str) -> None:
     logger.error(msg)
@@ -126,6 +128,11 @@ class EventHandler(FileSystemEventHandler):
                 out += [f for f in d.iterdir() if f.is_file()]
         return out
 
+    def parse_package_name(self, pkg_name):
+        """ Parse FQD to proper package name """
+        return pkg_name.split(".")[-1]
+
+
     def notify(self, summary: str, body: str):
         if self._t_notify_ms >= 0:
             try:
@@ -142,8 +149,8 @@ class EventHandler(FileSystemEventHandler):
                 files += [DesktopFile(df) for df in d.iterdir() if df.is_file() and df.suffix == ".desktop"]
         return files
 
-    def check(self):
-        """ Check for new and removed flatpaks """
+    def check_desktop_files(self):
+        """ Check for new and removed flatpaks by looking at the desktop files """
         changed = False
         for df in self.get_desktop_files():
             if df not in self._known_apps:
@@ -173,6 +180,37 @@ class EventHandler(FileSystemEventHandler):
         self._known_apps = self.get_desktop_files()
         return changed
 
+    def check(self):
+        """ Check for new and removed flatpaks """
+        changed = False
+        for f in self.scan_dirs():
+            if f not in self._known_apps:
+
+                name = self.parse_package_name(f.name)
+                if self._to_lower:
+                    name = name.lower()
+
+                link = self._link_dir / f"{self._prefix}{name}{self._postfix}"
+                if link.is_symlink() and link.exists():
+                    continue
+
+                link.symlink_to(f)
+                logger.info(f"Flatpak installed, linked: {link} -> {f}")
+                self.notify("New flatpak installed", f"Linked: {name} -> {link.readlink().name}")
+                changed = True
+
+        # cleanup broken links
+        for f in self._link_dir.iterdir():
+            if f.is_symlink() and not f.exists():
+                target = f.readlink()
+                f.unlink()
+                logger.info(f"Flatpak '{f.name}' is no longer installed, removing symlink")
+                self.notify("Flatpak uninstalled", f"Unlinked: {f.name} -> {target.name}")
+                changed = True
+
+        self._known_apps = self.scan_dirs()
+        return changed
+
     def on_any_event(self, event):
         #logger.info(f"[{event.event_type}]\t{event.src_path}")
         if event.event_type in ["created", "deleted"]:
@@ -188,7 +226,7 @@ class App():
 
         parser.add_argument('-w', '--watch',     help="daemonize, keep watching for new packages", action='store_true')
         parser.add_argument('-l', '--link-dir',  help="directory where links are placed", required=True, type=Path)
-        parser.add_argument('-s', '--src-dir',   help="directory containing flatpak desktop files", action="append", type=Path, default=FP_DESKTOP_PATHS)
+        parser.add_argument('-s', '--src-dir',   help="directory containing flatpak binary files", action="append", type=Path, default=FP_BIN_PATHS)
         parser.add_argument('-p', '--prefix',    help="prefix link names with string", type=str, default="")
         parser.add_argument('-P', '--postfix',   help="postfix link names with string", type=str, default="")
         parser.add_argument('-L', '--to-lower',  help="make link names lowercase only", action='store_true')
